@@ -2,6 +2,7 @@ function! s:WaitYankAndPasteEnd() "{{{
     call setpos('.', b:WaitYankInfo.pos)
     let l:cpos = getpos('.')
     if l:cpos[2] != b:WaitYankInfo.pos[2] "col not equal paste after
+        " feedkeys api input char in insert mode? not command in normal mode?
         exe printf('norm! %dp', b:WaitYankInfo.count)
     else
         exe printf('norm! %dP', b:WaitYankInfo.count)
@@ -18,17 +19,19 @@ endfunction
 "}}}
 
 function! s:WaitYankEnd(isCall)
-    if a:isCall
-        call b:WaitYankInfo.cb()
-    endif
-
     au! WaitYankAndPaste
-    unlet! b:WaitYankInfo
 
-    vunmap <buffer> y
-    vunmap <buffer> Y
-    nunmap <buffer> y
-    nunmap <buffer> Y
+    if a:isCall
+        call feedkeys("\<C-\>\<C-N>:call b:WaitYankInfo.cb() | unlet! b:WaitYankInfo \<CR>")
+    else
+        unlet! b:WaitYankInfo
+    endif
+    if !exists("##TextYankPost")
+        vunmap <buffer> y
+        vunmap <buffer> Y
+        nunmap <buffer> y
+        nunmap <buffer> Y
+    endif
 endfunction
 
 function! WaitYank#Wait(Callback)
@@ -41,13 +44,19 @@ function! WaitYank#Wait(Callback)
         \ "cb"    : a:Callback ,
         \ }
 
-  xnoremap <silent><buffer> y y:call <SID>WaitYankEnd(1)<CR>
-  xnoremap <silent><buffer> Y Y:call <SID>WaitYankEnd(1)<CR>
-  nnoremap <silent><buffer> y :<C-U>set opfunc=<SID>yop<CR>g@
-  nnoremap <silent><buffer> Y Y:call <SID>WaitYankEnd(1)<CR>
+  let existTextYankPost = exists("##TextYankPost")
+  if !existTextYankPost
+      xnoremap <silent><buffer> y y:call <SID>WaitYankEnd(1)<CR>
+      xnoremap <silent><buffer> Y Y:call <SID>WaitYankEnd(1)<CR>
+      nnoremap <silent><buffer> y :<C-U>set opfunc=<SID>yop<CR>g@
+      nnoremap <silent><buffer> Y Y:call <SID>WaitYankEnd(1)<CR>
+  endif
 
   augroup WaitYankAndPaste
     au!
+    if existTextYankPost
+        au TextYankPost <buffer> call <SID>WaitYankEnd(1)
+    endif
     " au CursorMoved,CursorHold <buffer> if @@ != "" | call <SID>WaitYankAndPasteEnd(1) | endif
     au InsertEnter <buffer> call <SID>WaitYankEnd(0)
   augroup END
